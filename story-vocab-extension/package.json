@@ -1,0 +1,54 @@
+{
+  "name": "story-vocab-extension",
+  "displayName": "Story Vocabulary Highlighter",
+  "description": "Highlights vocabulary in stories with educational features",
+  "version": "1.0.0",
+  "publisher": "CaseyXu",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Education",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown",
+    "onLanguage:plaintext",
+    "onCommand:story-vocab-extension.highlightVocabulary"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "story-vocab-extension.highlightVocabulary",
+        "title": "Highlight Story Vocabulary"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "story-vocab-extension.highlightVocabulary",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^16.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^4.9.0"
+  },
+  "dependencies": {
+    "axios": "^1.4.0"
+  }
+}
