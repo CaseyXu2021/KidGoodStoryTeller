@@ -58,16 +58,20 @@ st.markdown("""
 @st.cache_resource
 def load_image_to_text_pipeline():
     """Load image-to-text pipeline"""
-    return pipeline("image-to-text", model="Salesforce/blip-base")
+    try:
+        return pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
+    except:
+        # Fallback to alternative model
+        return pipeline("image-to-text", model="nlpconnect/vit-gpt2-image-captioning")
 
 @st.cache_resource
 def load_text_generation_pipeline():
     """Load text generation pipeline"""
-    return pipeline("text-generation", model="gpt2")
+    return pipeline("text-generation", model="gpt2", max_new_tokens=100)
 
 @st.cache_resource
 def load_tts_pipeline():
-    """Load text-to-speech pipeline"""
+    """Load text-to-speech pipeline (optional)"""
     try:
         return pipeline("text-to-speech", model="espnet/kan-bayashi_ljspeech_fastspeech2")
     except:
@@ -94,17 +98,15 @@ def text2story(caption):
         
         result = text_gen_pipeline(
             prompt,
-            max_length=150,
-            num_return_sequences=1,
-            temperature=0.7,
-            top_p=0.9
+            num_return_sequences=1
         )
         
         story = result[0]['generated_text'] if result else prompt
         return story[:300]  # Limit story length
     except Exception as e:
-        st.error(f"Error generating story: {str(e)}")
+        st.warning(f"Story generation note: {str(e)}")
         return f"Once upon a time, {caption}. And they lived happily ever after."
+
 
 def story2audio(story_text):
     """Convert story text to audio (optional - may fail on Streamlit Cloud)"""
