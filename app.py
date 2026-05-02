@@ -68,11 +68,32 @@ st.markdown("""
 if 'current_step' not in st.session_state:
     st.session_state.current_step = 0  # 0: idle, 1: image analysis, 2: story creation, 3: audio generation
 
-# ============================================
-# Function Definitions
-# ============================================
-
-def img2text(image_path: str) -> str:
+def show_sidebar_progress(step: int):
+    """
+    Display vertical progress bar in sidebar with moving star emoji
+    One line per step
+    """
+    steps = [
+        ("📌", "Start"),
+        ("📸", "Analyzing Image"),
+        ("📖", "Creating Story"),
+        ("🎵", "Generating Audio"),
+        ("✅", "Complete")
+    ]
+    
+    progress_content = ""
+    for i, (emoji, label) in enumerate(steps):
+        if i < step:
+            # Completed steps - gold star
+            progress_content += f"⭐ {label}\n\n"
+        elif i == step:
+            # Current step - larger red star
+            progress_content += f"🌟 **{label}**\n\n"
+        else:
+            # Future steps - empty star
+            progress_content += f"☆ {label}\n\n"
+    
+    return progress_content
     """
     Convert image to text description using AI vision model
     """
@@ -153,37 +174,17 @@ def save_uploaded_file(uploaded_file) -> str:
         st.error(f"❌ File save error: {str(e)}")
         return None
 
-def show_progress_bar(step: int):
-    """
-    Display animated progress bar with moving star emoji
-    step: 0=idle, 1=analyzing image, 2=creating story, 3=generating audio, 4=complete
-    """
-    steps = ["📌 Start", "📸 Image", "📖 Story", "🎵 Audio", "✅ Done"]
-    
-    # Create progress bar with moving star
-    progress_html = '<div class="progress-bar">'
-    for i, step_name in enumerate(steps):
-        if i < step:
-            # Completed steps
-            progress_html += f'<div style="color: #4CAF50; font-weight: bold;">⭐{step_name}</div>'
-        elif i == step:
-            # Current step - animated star
-            progress_html += f'<div style="color: #FF6B6B; font-weight: bold; font-size: 28px;">⭐{step_name}</div>'
-        else:
-            # Future steps
-            progress_html += f'<div style="color: #999;">☆{step_name}</div>'
-    
-    progress_html += '</div>'
-    st.markdown(progress_html, unsafe_allow_html=True)
-
 def process_image_to_story(image_path: str):
     """
     Complete 3-stage pipeline: Image → Text → Story → Audio
-    With animated progress indicator
+    With progress tracked in sidebar
     """
+    # Create a container for progress updates
+    progress_container = st.container()
+    
     # Stage 1: Image to Text
-    st.session_state.current_step = 1
-    show_progress_bar(1)
+    with progress_container:
+        st.session_state.current_step = 1
     
     st.subheader("📸 Step 1: Understanding Your Picture")
     st.text("AI robot is analyzing your image...")
@@ -196,11 +197,10 @@ def process_image_to_story(image_path: str):
     else:
         return
     
-    time.sleep(0.5)  # Brief pause for visual feedback
+    time.sleep(0.5)
     
     # Stage 2: Text to Story
     st.session_state.current_step = 2
-    show_progress_bar(2)
     
     st.subheader("📖 Step 2: Writing Your Story")
     st.text("AI author is creating an exciting story inspired by your image...")
@@ -209,7 +209,6 @@ def process_image_to_story(image_path: str):
         story = text2story(caption)
     
     if story:
-        # Display story in larger font
         st.markdown(
             f'<div class="story-box"><b>🎉 Your Amazing Story:</b><br><br>{story}</div>',
             unsafe_allow_html=True
@@ -221,7 +220,6 @@ def process_image_to_story(image_path: str):
     
     # Stage 3: Story to Audio
     st.session_state.current_step = 3
-    show_progress_bar(3)
     
     st.subheader("🎵 Step 3: Creating Voice Narration")
     st.text("AI voice actor is recording your story...")
@@ -234,7 +232,6 @@ def process_image_to_story(image_path: str):
         sample_rate = audio_output["sampling_rate"]
         
         st.session_state.current_step = 4
-        show_progress_bar(4)
         
         st.success("✅ Story narration complete!")
         st.markdown("---")
@@ -269,8 +266,13 @@ st.markdown("""
 ---
 """)
 
-# Sidebar with Tips
+# Sidebar with Tips and Progress Tracker
 with st.sidebar:
+    st.subheader("📊 Progress Tracker")
+    progress_placeholder = st.empty()
+    progress_placeholder.markdown(show_sidebar_progress(st.session_state.current_step))
+    
+    st.markdown("---")
     st.subheader("💡 Helpful Tips")
     st.info("""
     🖼️ **Best pictures for this app:**
