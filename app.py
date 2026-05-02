@@ -1,14 +1,15 @@
 # ============================================
-# 图片转故事应用 - 为10岁小孩设计
-# Picture to Story App - Designed for Kids aged 10
+# Kids Story Creator - AI Picture to Story App
+# Designed for Children aged 10+
 # ============================================
 
 import streamlit as st
 from transformers import pipeline
 import os
+import time
 
 # ============================================
-# 页面配置 / Page Configuration
+# Page Configuration
 # ============================================
 st.set_page_config(
     page_title="Kids Story Creator",
@@ -18,7 +19,7 @@ st.set_page_config(
 )
 
 # ============================================
-# 自定义样式和主题 / Custom Styling
+# Custom Styling and Theme
 # ============================================
 st.markdown("""
     <style>
@@ -45,21 +46,35 @@ st.markdown("""
         }
         .story-box {
             background-color: #FFF9E6;
-            padding: 15px;
+            padding: 20px;
             border-radius: 8px;
             border-left: 5px solid #FFD700;
+            font-size: 18px;
+            line-height: 1.8;
+        }
+        .progress-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 24px;
+            margin: 20px 0;
         }
     </style>
 """, unsafe_allow_html=True)
 
 # ============================================
-# 函数定义 / Function Definitions
+# Session State for Progress Tracking
+# ============================================
+if 'current_step' not in st.session_state:
+    st.session_state.current_step = 0  # 0: idle, 1: image analysis, 2: story creation, 3: audio generation
+
+# ============================================
+# Function Definitions
 # ============================================
 
 def img2text(image_path: str) -> str:
     """
-    将图片转换为文字描述
-    Convert image to text description
+    Convert image to text description using AI vision model
     """
     try:
         image_to_text_model = pipeline(
@@ -69,13 +84,13 @@ def img2text(image_path: str) -> str:
         text = image_to_text_model(image_path)[0]["generated_text"]
         return text
     except Exception as e:
-        st.error(f"❌ 图片识别出错: {str(e)}")
+        st.error(f"❌ Image recognition error: {str(e)}")
         return None
 
 def text2story(caption: str) -> str:
     """
-    将简短描述扩展为故事
-    Expand caption into a full story
+    Expand image description into a full, vivid story
+    Fine-tuned parameters to keep story closer to original picture context
     """
     try:
         story_generator = pipeline(
@@ -84,28 +99,32 @@ def text2story(caption: str) -> str:
         )
         results = story_generator(
             caption,
-            max_length=150,
+            max_length=120,  # Control story length
             num_return_sequences=1,
             do_sample=True,
-            temperature=0.8,
+            temperature=0.7,  # Lower temp for more focused, coherent stories
+            top_p=0.9,  # Add top_p for better nucleus sampling
+            repetition_penalty=1.2,  # Avoid repetitive text
             truncation=True
         )
         story = results[0]['generated_text']
         
-        # 字数控制逻辑 (100-150 词)
+        # Word count control (80-120 words) - keep story focused on the image
         words = story.split()
-        if len(words) > 150:
-            story = ' '.join(words[:150])
+        if len(words) > 120:
+            story = ' '.join(words[:120])
+        elif len(words) < 50:
+            # If story is too short, add more context related to caption
+            story = story + " " + caption + " " + story
         
         return story
     except Exception as e:
-        st.error(f"❌ 故事生成出错: {str(e)}")
+        st.error(f"❌ Story generation error: {str(e)}")
         return None
 
 def story2audio(story_text: str):
     """
-    将故事转换为音频
-    Convert story to audio
+    Convert story text to speech audio using AI voice model
     """
     try:
         audio_pipe = pipeline(
@@ -115,16 +134,14 @@ def story2audio(story_text: str):
         audio_data = audio_pipe(story_text)
         return audio_data
     except Exception as e:
-        st.error(f"❌ 音频生成出错: {str(e)}")
+        st.error(f"❌ Audio generation error: {str(e)}")
         return None
 
 def save_uploaded_file(uploaded_file) -> str:
     """
-    保存上传的文件到临时目录
-    Save uploaded file to temporary directory
+    Save uploaded image file to temporary directory
     """
     try:
-        # 创建临时目录
         if not os.path.exists("temp_images"):
             os.makedirs("temp_images")
         
@@ -133,144 +150,205 @@ def save_uploaded_file(uploaded_file) -> str:
             f.write(uploaded_file.getvalue())
         return file_path
     except Exception as e:
-        st.error(f"❌ 文件保存出错: {str(e)}")
+        st.error(f"❌ File save error: {str(e)}")
         return None
+
+def show_progress_bar(step: int):
+    """
+    Display animated progress bar with moving star emoji
+    step: 0=idle, 1=analyzing image, 2=creating story, 3=generating audio, 4=complete
+    """
+    steps = ["📌 Start", "📸 Image", "📖 Story", "🎵 Audio", "✅ Done"]
+    
+    # Create progress bar with moving star
+    progress_html = '<div class="progress-bar">'
+    for i, step_name in enumerate(steps):
+        if i < step:
+            # Completed steps
+            progress_html += f'<div style="color: #4CAF50; font-weight: bold;">⭐{step_name}</div>'
+        elif i == step:
+            # Current step - animated star
+            progress_html += f'<div style="color: #FF6B6B; font-weight: bold; font-size: 28px;">⭐{step_name}</div>'
+        else:
+            # Future steps
+            progress_html += f'<div style="color: #999;">☆{step_name}</div>'
+    
+    progress_html += '</div>'
+    st.markdown(progress_html, unsafe_allow_html=True)
 
 def process_image_to_story(image_path: str):
     """
-    完整的三阶段流程：图片 → 文本 → 故事 → 音频
     Complete 3-stage pipeline: Image → Text → Story → Audio
+    With animated progress indicator
     """
-    # 阶段 1: 图片转文本
-    st.subheader("📸 第一步：理解图片")
-    st.text("AI 机器人正在看你的图片...")
+    # Stage 1: Image to Text
+    st.session_state.current_step = 1
+    show_progress_bar(1)
     
-    with st.spinner("🤔 分析中..."):
+    st.subheader("📸 Step 1: Understanding Your Picture")
+    st.text("AI robot is analyzing your image...")
+    
+    with st.spinner("🤔 Analyzing..."):
         caption = img2text(image_path)
     
     if caption:
-        st.success(f"✅ 图片描述：**{caption}**")
+        st.success(f"✅ Image Description: **{caption}**")
     else:
         return
     
-    # 阶段 2: 文本转故事
-    st.subheader("📖 第二步：编写故事")
-    st.text("AI 作家正在创作一个有趣的故事...")
+    time.sleep(0.5)  # Brief pause for visual feedback
     
-    with st.spinner("✍️ 创作中..."):
+    # Stage 2: Text to Story
+    st.session_state.current_step = 2
+    show_progress_bar(2)
+    
+    st.subheader("📖 Step 2: Writing Your Story")
+    st.text("AI author is creating an exciting story inspired by your image...")
+    
+    with st.spinner("✍️ Creating story..."):
         story = text2story(caption)
     
     if story:
+        # Display story in larger font
         st.markdown(
-            f'<div class="story-box"><b>🎉 你的故事：</b><br>{story}</div>',
+            f'<div class="story-box"><b>🎉 Your Amazing Story:</b><br><br>{story}</div>',
             unsafe_allow_html=True
         )
     else:
         return
     
-    # 阶段 3: 故事转音频
-    st.subheader("🎵 第三步：生成语音")
-    st.text("AI 播音员正在为故事配音...")
+    time.sleep(0.5)
     
-    with st.spinner("🎤 配音中..."):
+    # Stage 3: Story to Audio
+    st.session_state.current_step = 3
+    show_progress_bar(3)
+    
+    st.subheader("🎵 Step 3: Creating Voice Narration")
+    st.text("AI voice actor is recording your story...")
+    
+    with st.spinner("🎤 Generating audio..."):
         audio_output = story2audio(story)
     
     if audio_output:
         audio_array = audio_output["audio"]
         sample_rate = audio_output["sampling_rate"]
         
-        st.success("✅ 故事配音完成！")
+        st.session_state.current_step = 4
+        show_progress_bar(4)
+        
+        st.success("✅ Story narration complete!")
+        st.markdown("---")
+        
         col1, col2 = st.columns(2)
         
         with col1:
+            st.subheader("🎧 Listen to Your Story")
             st.audio(audio_array, sample_rate=sample_rate)
         
         with col2:
-            st.info("📢 点击上面的播放按钮听你的故事！")
+            st.subheader("📢 How to Enjoy")
+            st.info("Click the play button above to hear your story narrated by AI!")
+            st.markdown("**Enjoy your magical story! 🎭✨**")
 
 # ============================================
-# 主应用界面 / Main Application UI
+# Main Application UI
 # ============================================
 
-# 标题和欢迎信息
-st.title("🎨 小孩故事创作机 Kids Story Creator")
+# Title and Welcome Section
+st.header("🎨 Kids Story Creator - Turn Pictures into Stories")
 st.markdown("""
 ---
-### 👋 欢迎来到魔法故事工厂！
-**选择一张图片，让 AI 为你编造一个有趣的故事吧！** 🎭
+### 👋 Welcome to the Magic Story Factory!
+**Upload a picture and let AI create an exciting story for you!** 🎭
 
-**这个应用有 3 个神奇步骤：**
-1. 📸 **图片识别** - AI 看你的图片，说出它看到了什么
-2. 📖 **故事创作** - AI 作家把描述变成一个完整的故事
-3. 🎵 **语音朗读** - AI 播音员为你的故事配音
+**This app has 3 amazing steps:**
+1. 📸 **Image Recognition** - AI looks at your picture and describes what it sees
+2. 📖 **Story Creation** - AI author transforms the description into a full story
+3. 🎵 **Voice Narration** - AI voice actor reads your story out loud
 
 ---
 """)
 
-# 创建侧边栏帮助信息
+# Sidebar with Tips
 with st.sidebar:
-    st.subheader("💡 小提示")
+    st.subheader("💡 Helpful Tips")
     st.info("""
-    🖼️ **上传图片的建议：**
-    - 图片要清晰，光线要好
-    - 最好包含有趣的人物或动物
-    - 图片不要太复杂
+    🖼️ **Best pictures for this app:**
+    - Clear, well-lit photos
+    - Pictures with interesting people or animals
+    - Not too complex or busy
     
-    ⚠️ **注意：**
-    - 首次运行需要下载 AI 模型 (可能需要 5-15 分钟)
-    - 请耐心等待~
+    ⚠️ **Important Notes:**
+    - First run downloads AI models (5-15 minutes)
+    - Please be patient! ⏳
+    - Works best with English descriptions
+    """)
+    
+    st.markdown("---")
+    st.subheader("ℹ️ About This Project")
+    st.success("""
+    **Learn AI Technology!**
+    
+    This app uses:
+    - **BLIP AI** - Sees pictures
+    - **GPT-2** - Writes stories  
+    - **MMS-TTS** - Creates voices
+    
+    These are top-level AI technologies! 🚀
     """)
 
-# 主要功能区域
+# Main Functionality Area
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("📤 上传你的图片")
+    st.subheader("📤 Upload Your Picture")
     uploaded_file = st.file_uploader(
-        "选择一张 JPG 或 PNG 的图片",
+        "Choose a JPG or PNG image",
         type=["jpg", "jpeg", "png"],
-        help="点击选择或直接拖拽图片到这里"
+        help="Click to select or drag and drop your image here"
     )
     
-    # 显示上传的图片
     if uploaded_file is not None:
         st.image(
             uploaded_file,
-            caption="📸 你上传的图片",
+            caption="📸 Your Uploaded Picture",
             use_column_width=True
         )
         
-        # 保存文件
+        # Save file
         image_path = save_uploaded_file(uploaded_file)
         
         if image_path:
             st.markdown("---")
+            st.session_state.current_step = 0
             
-            # 创建生成按钮
-            if st.button("🚀 开始创作故事!", use_container_width=True):
-                # 开始三阶段流程
+            # Create story generation button
+            if st.button("🚀 Create My Story!", use_container_width=True):
+                st.markdown("---")
                 process_image_to_story(image_path)
-            
-            st.markdown("---")
 
 with col2:
-    st.subheader("📋 你知道吗？")
-    st.success("""
-    ✨ 这个应用使用了：
-    - **BLIP 视觉 AI** - 看图片
-    - **GPT-2** - 写故事  
-    - **MMS-TTS** - 配音
+    st.subheader("🎨 How It Works")
+    st.markdown("""
+    **Step 1️⃣**
+    Upload a picture
     
-    都是世界顶级的 AI 技术哦！
+    **Step 2️⃣**
+    Click the button
+    
+    **Step 3️⃣**
+    Enjoy your story! 
+    
+    It's that easy! 😊
     """)
 
-# 底部信息
+# Footer
 st.markdown("""
 ---
-**🎓 课程项目**
-- 课程: ISOM5240 - Python编程
-- 项目: AI 讲故事应用
-- 技术: Streamlit + Transformers + PyTorch
+### 🎓 Course Project
+- **Course:** ISOM5240 - Python Programming
+- **Project:** AI Story Creator
+- **Technology:** Streamlit + Transformers + PyTorch
 
-**祝你玩得开心！🎉**
+**Have fun creating stories! 🎉✨**
 """)
